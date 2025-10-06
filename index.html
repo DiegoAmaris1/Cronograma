@@ -108,6 +108,7 @@
             border-left: 4px solid #667eea;
             transition: all 0.3s;
             position: relative;
+            flex-wrap: wrap;
         }
 
         .task-item:hover {
@@ -166,6 +167,24 @@
         .task-timer.finished {
             color: #28a745;
             background: rgba(40, 167, 69, 0.1);
+        }
+
+        .fullscreen-btn {
+            padding: 8px 15px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 10px;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .fullscreen-btn:hover {
+            background: #5568d3;
+            transform: scale(1.05);
         }
 
         .task-item.completed .task-description {
@@ -254,6 +273,111 @@
             font-size: 14px;
         }
 
+        .fullscreen-timer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            flex-direction: column;
+        }
+
+        .fullscreen-timer.active {
+            display: flex;
+        }
+
+        .fullscreen-content {
+            text-align: center;
+            color: white;
+        }
+
+        .fullscreen-title {
+            font-size: 2em;
+            margin-bottom: 20px;
+            opacity: 0.9;
+        }
+
+        .fullscreen-task {
+            font-size: 1.5em;
+            margin-bottom: 40px;
+            font-weight: normal;
+            max-width: 80%;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .fullscreen-clock {
+            font-size: 8em;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            margin-bottom: 40px;
+            text-shadow: 0 5px 20px rgba(0,0,0,0.3);
+        }
+
+        .fullscreen-progress {
+            width: 80%;
+            max-width: 600px;
+            height: 20px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 40px;
+        }
+
+        .fullscreen-progress-bar {
+            height: 100%;
+            background: white;
+            transition: width 1s linear;
+            box-shadow: 0 0 20px rgba(255,255,255,0.5);
+        }
+
+        .fullscreen-exit-btn {
+            padding: 15px 40px;
+            font-size: 1.2em;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid white;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen-exit-btn:hover {
+            background: white;
+            color: #667eea;
+            transform: scale(1.05);
+        }
+
+        .fullscreen-complete-btn {
+            padding: 15px 40px;
+            font-size: 1.2em;
+            background: #28a745;
+            color: white;
+            border: 2px solid #28a745;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-right: 20px;
+        }
+
+        .fullscreen-complete-btn:hover {
+            background: #218838;
+            border-color: #218838;
+            transform: scale(1.05);
+        }
+
+        .fullscreen-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 15px;
@@ -275,6 +399,24 @@
             .notification {
                 left: 20px;
                 right: 20px;
+            }
+
+            .fullscreen-clock {
+                font-size: 4em;
+            }
+
+            .fullscreen-title {
+                font-size: 1.5em;
+            }
+
+            .fullscreen-task {
+                font-size: 1.2em;
+            }
+
+            .fullscreen-exit-btn,
+            .fullscreen-complete-btn {
+                padding: 12px 30px;
+                font-size: 1em;
             }
         }
     </style>
@@ -323,6 +465,21 @@
     <div id="notification" class="notification">
         <h3 id="notificationTitle">¡Tiempo completado!</h3>
         <p id="notificationMessage">Has terminado tu tarea</p>
+    </div>
+
+    <div id="fullscreenTimer" class="fullscreen-timer">
+        <div class="fullscreen-content">
+            <div class="fullscreen-title">⏱️ Cronómetro Activo</div>
+            <div class="fullscreen-task" id="fullscreenTaskName">Tarea en progreso</div>
+            <div class="fullscreen-clock" id="fullscreenClock">00:00</div>
+            <div class="fullscreen-progress">
+                <div class="fullscreen-progress-bar" id="fullscreenProgressBar"></div>
+            </div>
+            <div class="fullscreen-buttons">
+                <button class="fullscreen-complete-btn" onclick="completeFromFullscreen()">✓ Completar Tarea</button>
+                <button class="fullscreen-exit-btn" onclick="closeFullscreen()">← Volver al Horario</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -381,6 +538,7 @@
         let taskStates = {};
         let timers = {};
         let intervals = {};
+        let currentFullscreenTask = null;
 
         function loadState() {
             const saved = localStorage.getItem(`schedule_${currentDay}`);
@@ -419,7 +577,6 @@
                 notification.classList.add('warning');
             }
             
-            // Reproducir sonido de alerta (beep usando Web Audio API)
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
@@ -441,14 +598,66 @@
             }, 5000);
         }
 
+        function openFullscreen(taskId, taskName, hours) {
+            currentFullscreenTask = { taskId, taskName, hours };
+            document.getElementById('fullscreenTaskName').textContent = taskName;
+            document.getElementById('fullscreenTimer').classList.add('active');
+            updateFullscreenDisplay();
+        }
+
+        function closeFullscreen() {
+            document.getElementById('fullscreenTimer').classList.remove('active');
+        }
+
+        function completeFromFullscreen() {
+            if (currentFullscreenTask) {
+                const taskId = currentFullscreenTask.taskId;
+                taskStates[taskId] = { completed: true, running: false, startTime: null };
+                stopTimer(taskId);
+                saveState();
+                currentFullscreenTask = null;
+                closeFullscreen();
+                renderSchedule();
+                showNotification('✅ Tarea completada', '¡Buen trabajo!', 'success');
+            }
+        }
+
+        function updateFullscreenDisplay() {
+            if (!currentFullscreenTask) return;
+            
+            const taskId = currentFullscreenTask.taskId;
+            const timer = timers[taskId];
+            
+            if (timer && timer.remaining > 0) {
+                document.getElementById('fullscreenClock').textContent = formatTime(timer.remaining);
+                
+                const progress = ((timer.total - timer.remaining) / timer.total) * 100;
+                document.getElementById('fullscreenProgressBar').style.width = progress + '%';
+                
+                requestAnimationFrame(updateFullscreenDisplay);
+            } else if (timer) {
+                document.getElementById('fullscreenClock').textContent = '¡LISTO!';
+                document.getElementById('fullscreenProgressBar').style.width = '100%';
+            }
+        }
+
         function startTimer(taskId, hours) {
-            if (hours === 0) return; // No iniciar timer para "Dormir"
+            if (hours === 0) return;
             
             const totalSeconds = Math.floor(hours * 3600);
+            const savedState = taskStates[taskId];
+            
+            const startTime = savedState && savedState.startTime ? savedState.startTime : Date.now();
+            
+            if (!savedState.startTime) {
+                taskStates[taskId].startTime = startTime;
+                saveState();
+            }
+            
             timers[taskId] = {
                 remaining: totalSeconds,
                 total: totalSeconds,
-                startTime: Date.now()
+                startTime: startTime
             };
             
             intervals[taskId] = setInterval(() => {
@@ -499,7 +708,6 @@
         }
 
         function renderSchedule() {
-            // Limpiar todos los timers antes de re-renderizar
             Object.keys(intervals).forEach(taskId => {
                 clearInterval(intervals[taskId]);
             });
@@ -539,7 +747,7 @@
                         checkbox.type = 'checkbox';
                         checkbox.className = 'checkbox';
                         checkbox.checked = isCompleted;
-                        checkbox.onchange = () => toggleTask(taskId, task.hours);
+                        checkbox.onchange = () => toggleTask(taskId, task.hours, task.desc);
 
                         const time = document.createElement('div');
                         time.className = 'task-time';
@@ -557,8 +765,27 @@
                             const timerDiv = document.createElement('div');
                             timerDiv.className = 'task-timer';
                             timerDiv.id = `timer_${taskId}`;
-                            timerDiv.textContent = formatTime(Math.floor(task.hours * 3600));
+                            
+                            const savedState = taskStates[taskId];
+                            const totalSeconds = Math.floor(task.hours * 3600);
+                            let displayTime = totalSeconds;
+                            
+                            if (savedState && savedState.startTime) {
+                                const elapsed = Math.floor((Date.now() - savedState.startTime) / 1000);
+                                displayTime = Math.max(0, totalSeconds - elapsed);
+                            }
+                            
+                            timerDiv.textContent = formatTime(displayTime);
                             taskItem.appendChild(timerDiv);
+                            
+                            const fullscreenBtn = document.createElement('button');
+                            fullscreenBtn.className = 'fullscreen-btn';
+                            fullscreenBtn.textContent = '🖥️ Pantalla Completa';
+                            fullscreenBtn.onclick = (e) => {
+                                e.stopPropagation();
+                                openFullscreen(taskId, task.desc, task.hours);
+                            };
+                            taskItem.appendChild(fullscreenBtn);
                             
                             setTimeout(() => startTimer(taskId, task.hours), 100);
                         }
@@ -573,25 +800,30 @@
             updateMetrics();
         }
 
-        function toggleTask(taskId, hours) {
+        function toggleTask(taskId, hours, taskDesc) {
             const currentState = taskStates[taskId] || { completed: false, running: false };
             
             if (!currentState.completed && !currentState.running) {
-                // Iniciar tarea
-                taskStates[taskId] = { completed: false, running: true };
+                taskStates[taskId] = { completed: false, running: true, startTime: Date.now() };
+                saveState();
+                renderSchedule();
                 showNotification('▶️ Tarea iniciada', 'El cronómetro ha comenzado', 'warning');
+                
+                setTimeout(() => {
+                    openFullscreen(taskId, taskDesc, hours);
+                }, 500);
+                
             } else if (currentState.running) {
-                // Completar tarea
-                taskStates[taskId] = { completed: true, running: false };
+                taskStates[taskId] = { completed: true, running: false, startTime: null };
                 stopTimer(taskId);
                 showNotification('✅ Tarea completada', '¡Buen trabajo!', 'success');
+                saveState();
+                renderSchedule();
             } else {
-                // Desmarcar tarea completada
-                taskStates[taskId] = { completed: false, running: false };
+                taskStates[taskId] = { completed: false, running: false, startTime: null };
+                saveState();
+                renderSchedule();
             }
-            
-            saveState();
-            renderSchedule();
         }
 
         function updateMetrics() {
@@ -624,7 +856,6 @@
         }
 
         function changeDay() {
-            // Limpiar timers al cambiar de día
             Object.keys(intervals).forEach(taskId => {
                 clearInterval(intervals[taskId]);
             });
